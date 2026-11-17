@@ -3,9 +3,9 @@ import { Check, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase, friendlyError } from '../lib/supabase'
-import { Button, Card, Field, PageHeader } from '../components/ui'
+import { Button, Card, ConfirmDialog, Field, PageHeader } from '../components/ui'
 import { useToast } from '../components/Toast'
-import { DAY_NAMES, MEAL_NAMES, formatRupees } from '../lib/ledger'
+import { DAY_NAMES, MEAL_NAMES, formatMeals, formatRupees } from '../lib/ledger'
 import { useTheme, type Theme } from '../lib/theme'
 
 export function SettingsPage() {
@@ -17,6 +17,7 @@ export function SettingsPage() {
         <MealTimes />
         <Profile />
       </div>
+      <ReduceBalance />
       <div className="grid gap-6 lg:grid-cols-2">
         <Appearance />
         <Account />
@@ -154,6 +155,64 @@ function MealTimes() {
           hint={`Used for new payments. Currently ${formatRupees(Number(rate) || 0)} = 3 meals.`} error={error} />
         <Button type="submit" loading={busy}>Save</Button>
       </form>
+    </Card>
+  )
+}
+
+/* ─── Reduce balance (settings-only) ────────────────────────────────────── */
+
+function ReduceBalance() {
+  const { addPayment, summary, profile, today } = useData()
+  const toast = useToast()
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(today)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  const [error, setError] = useState<string>()
+
+  const value = Math.round(Number(amount) * 100) / 100
+  const max = Math.max(0, summary.totalPaid)
+  const meals = (value * 3) / profile.rate
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!(amount !== '' && Number.isFinite(value) && value > 0)) { setError('Enter an amount greater than 0.'); return }
+    if (value > max) { setError(`You can reduce at most ${formatRupees(max)} (total added so far).`); return }
+    setError(undefined)
+    setConfirm(true)
+  }
+
+  async function apply() {
+    setConfirm(false); setBusy(true)
+    const ok = await addPayment({ amount: -value, paid_on: date, note: note.trim() || 'Balance reduced' })
+    setBusy(false)
+    if (ok) {
+      toast.success(`Reduced ${formatRupees(value)} · ${formatMeals(meals)} meals`)
+      setAmount(''); setNote('')
+    }
+  }
+
+  return (
+    <Card aria-labelledby="reduce-h">
+      <h2 id="reduce-h" className="text-lg font-semibold">Reduce balance</h2>
+      <p className="mt-1 text-sm text-muted">
+        Take money off what you’ve added — e.g. a refund or a correction. It shows up in your payment history as a deduction and can be deleted there to undo it.
+        Total added: <span className="font-semibold text-ink tabular">{formatRupees(summary.totalPaid)}</span> · balance <span className="font-semibold text-ink tabular">{formatRupees(summary.balanceRupees)}</span>.
+      </p>
+      <form onSubmit={submit} className="mt-5 space-y-4" noValidate>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Amount to reduce" type="number" inputMode="decimal" min="1" step="any" placeholder="200" suffix="₹"
+            value={amount} onChange={(e) => { setAmount(e.target.value); setError(undefined) }} error={error}
+            hint={value > 0 ? `= ${formatMeals(meals)} meals at ${formatRupees(profile.rate)} per 3 meals` : undefined} />
+          <Field label="Date" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} required />
+          <Field label="Reason (optional)" placeholder="e.g. Refund" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        <Button type="submit" variant="secondary" loading={busy}>Reduce amount</Button>
+      </form>
+      <ConfirmDialog open={confirm} danger confirmLabel="Reduce" title={`Reduce ${formatRupees(value)}?`}
+        body={<>Your balance will go down by {formatRupees(value)} ({formatMeals(meals)} meals).</>}
+        onCancel={() => setConfirm(false)} onConfirm={apply} />
     </Card>
   )
 }

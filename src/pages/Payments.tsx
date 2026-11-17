@@ -7,6 +7,8 @@ import { useToast } from '../components/Toast'
 import { formatMeals, formatRupees, type Payment } from '../lib/ledger'
 import { formatDate } from '../lib/dates'
 
+const toLabel = (p: Payment) => (p.amount < 0 ? 'deduction' : 'payment')
+
 export function PaymentsPage() {
   const { payments, summary, deletePayment } = useData()
   const toast = useToast()
@@ -43,14 +45,17 @@ export function PaymentsPage() {
                     <span className="mt-0.5 text-[10px] font-semibold uppercase text-muted">{formatDate(p.paid_on, { month: 'short' })}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold tabular">{formatRupees(p.amount)}</p>
+                    <p className={`font-semibold tabular ${p.amount < 0 ? 'text-danger' : ''}`}>
+                      {p.amount < 0 ? `− ${formatRupees(-p.amount)}` : formatRupees(p.amount)}
+                      {p.amount < 0 && <span className="ml-2 rounded-full bg-danger-soft px-2 py-0.5 text-xs font-semibold">Deduction</span>}
+                    </p>
                     <p className="truncate text-sm text-muted">
                       {formatMeals(p.meals)} meals{p.note ? ` · ${p.note}` : ''}
                       {p.rate !== 100 && <> · at {formatRupees(p.rate)}/3</>}
                     </p>
                   </div>
                   <button onClick={() => setToDelete(p)} className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-soft hover:text-danger"
-                    aria-label={`Delete payment of ${formatRupees(p.amount)} on ${formatDate(p.paid_on, { day: 'numeric', month: 'long', year: 'numeric' })}`}>
+                    aria-label={`Delete ${toLabel(p)} of ${formatRupees(Math.abs(p.amount))} on ${formatDate(p.paid_on, { day: 'numeric', month: 'long', year: 'numeric' })}`}>
                     <Trash2 className="size-4" aria-hidden />
                   </button>
                 </li>
@@ -60,10 +65,10 @@ export function PaymentsPage() {
         </Card>
       </div>
 
-      <ConfirmDialog open={!!toDelete} danger confirmLabel="Delete payment" title="Delete this payment?"
-        body={toDelete && <>{formatRupees(toDelete.amount)} ({formatMeals(toDelete.meals)} meals) on {formatDate(toDelete.paid_on, { day: 'numeric', month: 'long' })} will be removed and your balance will drop by that much.</>}
+      <ConfirmDialog open={!!toDelete} danger confirmLabel={`Delete ${toDelete ? toLabel(toDelete) : 'payment'}`} title={`Delete this ${toDelete ? toLabel(toDelete) : 'payment'}?`}
+        body={toDelete && <>{formatRupees(Math.abs(toDelete.amount))} ({formatMeals(Math.abs(toDelete.meals))} meals) on {formatDate(toDelete.paid_on, { day: 'numeric', month: 'long' })} will be removed and your balance will {toDelete.amount < 0 ? 'go up' : 'drop'} by that much.</>}
         onCancel={() => setToDelete(null)}
-        onConfirm={async () => { const p = toDelete!; setToDelete(null); await deletePayment(p.id); toast.success('Payment deleted') }} />
+        onConfirm={async () => { const p = toDelete!; setToDelete(null); await deletePayment(p.id); toast.success(p.amount < 0 ? 'Deduction deleted' : 'Payment deleted') }} />
     </div>
   )
 }
