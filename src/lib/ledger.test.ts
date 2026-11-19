@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { summarize, createResolver, formatMeals, formatRupees, type LedgerInput, type Profile } from './ledger.ts'
+import { summarize, createResolver, formatMeals, formatRupees, mealsToDays, type LedgerInput, type Profile } from './ledger.ts'
 import { weekdayMon0, zonedNow, addDays } from './dates.ts'
 
 const profile: Profile = {
@@ -83,4 +83,41 @@ test('formatting', () => {
   assert.equal(formatMeals(29), '29')
   assert.equal(formatRupees(966.67), '₹966.67')
   assert.equal(formatRupees(1000), '₹1,000')
+})
+
+test('mealsToDays splits balance into 3-meal days, ignoring the schedule', () => {
+  assert.deepEqual(mealsToDays(21), { days: 7, meals: 0 })
+  assert.deepEqual(mealsToDays(23), { days: 7, meals: 2 })
+  assert.deepEqual(mealsToDays(22), { days: 7, meals: 1 })
+  assert.deepEqual(mealsToDays(2), { days: 0, meals: 2 })
+  assert.deepEqual(mealsToDays(6.5), { days: 2, meals: 0 })
+  assert.deepEqual(mealsToDays(0), { days: 0, meals: 0 })
+  assert.deepEqual(mealsToDays(-4), { days: 0, meals: 0 })
+  // A ₹700 balance at ₹100/day is 21 meals, even if the schedule skips some.
+  const s = summarize(input({
+    schedules: [{ effective_from: '2000-01-01', pattern: custom }],
+    payments: [{ id: 1, amount: 700, rate: 100, meals: 21, paid_on: '2026-11-16', note: '', created_at: '' }],
+  }))
+  assert.equal(s.balanceRupees, 700)
+  assert.deepEqual(mealsToDays(s.balanceMeals), { days: 7, meals: 0 })
+})
+
+test('coveredUntilEveryMeal ignores the schedule and counts 3 meals a day', () => {
+  const pay = (meals: number) => [{ id: 1, amount: 0, rate: 100, meals, paid_on: '2026-11-16', note: '', created_at: '' }]
+  const skipping = [{ effective_from: '2000-01-01', pattern: custom }]
+  // Mon 16 Nov 10:00: breakfast is over (and skipped), lunch + dinner still to come today.
+  const s = summarize(input({ schedules: skipping, payments: pay(21) }))
+  assert.equal(s.balanceMeals, 21)
+  assert.equal(s.coveredUntilEveryMeal, '2026-11-23') // lunch+dinner today, Tue–Sun, Mon breakfast
+  assert.ok(s.coveredUntil! > s.coveredUntilEveryMeal!) // the schedule-based date is pushed out by skips
+  assert.equal(summarize(input({ schedules: skipping, payments: pay(2) })).coveredUntilEveryMeal, '2026-11-16')
+  assert.equal(summarize(input({ schedules: skipping, payments: pay(3) })).coveredUntilEveryMeal, '2026-11-17')
+  assert.equal(summarize(input({ schedules: skipping, payments: pay(0.5) })).coveredUntilEveryMeal, null)
+  // After dinner (20:30 IST) nothing is left today: 21 meals = Tue 17 – Mon 23.
+  const late = summarize(input({ schedules: skipping, payments: pay(22), now: at('2026-11-16T15:00:00Z') }))
+  assert.equal(late.balanceMeals, 21)
+  assert.equal(late.coveredUntilEveryMeal, '2026-11-23')
+  // Tracking starts later: count from the start date's breakfast.
+  const later = summarize(input({ profile: { ...profile, start_date: '2026-11-20' }, payments: pay(21) }))
+  assert.equal(later.coveredUntilEveryMeal, '2026-11-26')
 })

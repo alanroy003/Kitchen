@@ -5,7 +5,7 @@ import { useData } from '../context/DataContext'
 import { Card, Modal } from '../components/ui'
 import { MEAL_ICONS, MealChip, MealRow } from '../components/MealToggle'
 import { PaymentForm } from '../components/PaymentForm'
-import { cellsForRange, formatMeals, formatRupees, MEAL_NAMES } from '../lib/ledger'
+import { cellsForRange, formatMeals, formatRupees, MEAL_NAMES, mealsToDays } from '../lib/ledger'
 import { addDays, diffDays, formatDate, formatTime, zonedNow } from '../lib/dates'
 
 function greeting(minutes: number) {
@@ -23,9 +23,11 @@ export function Dashboard() {
 
   const low = summary.balanceMeals < 6
   const empty = summary.balanceMeals <= 0
-  const daysLeft = summary.coveredUntil ? diffDays(summary.coveredUntil, today) : -1
-  /** Calendar days of food left, counting today (e.g. 21 meals from breakfast = 7 days). */
-  const daysOfFood = daysLeft + 1
+  const coveredUntil = summary.coveredUntilEveryMeal
+  const daysLeft = coveredUntil ? diffDays(coveredUntil, today) : -1
+  /** What the balance buys at 3 meals a day, regardless of schedule (e.g. 23 meals = 7 days + 2 meals). */
+  const { days: fullDays, meals: extraMeals } = mealsToDays(summary.balanceMeals)
+  const onlyMeals = fullDays === 0 && extraMeals > 0
   const eatenToday = summary.mealsToday.filter((c) => c.final && c.status === 'taken').length
 
   return (
@@ -53,8 +55,12 @@ export function Dashboard() {
           </button>
         </div>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="font-display text-[56px] font-semibold leading-none tabular tracking-tight sm:text-7xl">{daysOfFood}</span>
-          <span className="text-lg font-medium text-white/75">day{daysOfFood === 1 ? '' : 's'} left</span>
+          <span className="font-display text-[56px] font-semibold leading-none tabular tracking-tight sm:text-7xl">{onlyMeals ? extraMeals : fullDays}</span>
+          <span className="text-lg font-medium text-white/75">
+            {onlyMeals
+              ? `meal${extraMeals === 1 ? '' : 's'} left`
+              : `day${fullDays === 1 ? '' : 's'}${extraMeals > 0 ? ` + ${extraMeals} meal${extraMeals === 1 ? '' : 's'}` : ''} left`}
+          </span>
           <span className="text-sm font-medium tabular text-white/60">· {formatMeals(summary.balanceMeals)} meal{summary.balanceMeals === 1 ? '' : 's'}</span>
         </p>
         <p className="mt-2 text-[17px] font-semibold tabular">{formatRupees(summary.balanceRupees)} <span className="font-normal text-white/70">left</span></p>
@@ -62,8 +68,8 @@ export function Dashboard() {
         <div className="mt-6 flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-sm">
           <CalendarCheck className="size-5 shrink-0 text-white/80" aria-hidden />
           <p className="text-sm leading-snug">
-            {summary.coveredUntil ? (
-              <>Food covered until <strong className="font-semibold">{daysLeft === 0 ? 'today' : formatDate(summary.coveredUntil, { weekday: 'short', day: 'numeric', month: 'short' })}</strong></>
+            {coveredUntil ? (
+              <>Food covered until <strong className="font-semibold">{daysLeft === 0 ? 'today' : formatDate(coveredUntil, { weekday: 'short', day: 'numeric', month: 'short' })}</strong></>
             ) : <>No meals covered — add a payment to continue</>}
           </p>
         </div>

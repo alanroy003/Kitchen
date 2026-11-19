@@ -117,6 +117,12 @@ export interface Summary {
   totalPaid: number
   /** Last date with food covered by the balance, or null if balance is already ≤ 0. */
   coveredUntil: ISODate | null
+  /**
+   * Last date the balance lasts if every meal is eaten (weekly schedule and
+   * overrides ignored), starting from the next meal still to come.
+   * Null when less than one whole meal is left.
+   */
+  coveredUntilEveryMeal: ISODate | null
   /** The next meal still to come today or later, if any. */
   nextMeal: MealCell | null
   mealsToday: MealCell[]
@@ -153,6 +159,16 @@ export function summarize(input: LedgerInput): Summary {
   let nextMeal: MealCell | null = null
   let upcomingCovered = 0
   const from = r.today < start ? start : r.today
+
+  // Same end date if all 3 meals were eaten every day: fill the rest of `from`, then 3 a day.
+  const split = mealsToDays(balanceMeals)
+  const wholeMeals = split.days * 3 + split.meals
+  const leftOnFrom = MEALS.filter((m) => !r.cell(from, m).final).length
+  const coveredUntilEveryMeal: ISODate | null =
+    wholeMeals === 0 ? null
+    : wholeMeals <= leftOnFrom ? from
+    : addDays(from, Math.ceil((wholeMeals - leftOnFrom) / 3))
+
   for (let i = 0, d = from; i < HORIZON_DAYS; i++, d = addDays(d, 1)) {
 
     for (const m of MEALS) {
@@ -176,7 +192,7 @@ export function summarize(input: LedgerInput): Summary {
     return {
       paidMeals: round4(paidMeals), consumed, skipped, balanceMeals,
       balanceRupees: round2((balanceMeals * Number(profile.rate)) / 3),
-      totalPaid, coveredUntil, nextMeal, mealsToday, upcomingCovered,
+      totalPaid, coveredUntil, coveredUntilEveryMeal, nextMeal, mealsToday, upcomingCovered,
     }
   }
 }
@@ -199,6 +215,16 @@ export function round4(n: number) { return Math.round(n * 10000) / 10000 }
 export function formatMeals(n: number): string {
   const v = round2(n)
   return Number.isInteger(v) ? String(v) : v.toFixed(v * 10 === Math.round(v * 10) ? 1 : 2)
+}
+
+/**
+ * Splits a meal balance into full days (3 meals each) plus leftover meals,
+ * ignoring the weekly schedule: 21 meals → 7 days, 23 meals → 7 days + 2 meals.
+ * Part-meals are dropped; a zero or negative balance gives 0 days + 0 meals.
+ */
+export function mealsToDays(meals: number): { days: number; meals: number } {
+  const whole = Math.max(0, Math.floor(meals + 1e-9))
+  return { days: Math.floor(whole / 3), meals: whole % 3 }
 }
 
 export function formatRupees(n: number): string {
