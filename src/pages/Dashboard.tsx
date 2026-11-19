@@ -24,6 +24,8 @@ export function Dashboard() {
   const low = summary.balanceMeals < 6
   const empty = summary.balanceMeals <= 0
   const daysLeft = summary.coveredUntil ? diffDays(summary.coveredUntil, today) : -1
+  /** Calendar days of food left, counting today (e.g. 21 meals from breakfast = 7 days). */
+  const daysOfFood = daysLeft + 1
   const eatenToday = summary.mealsToday.filter((c) => c.final && c.status === 'taken').length
 
   return (
@@ -50,9 +52,10 @@ export function Dashboard() {
             <Plus className="size-4" aria-hidden /> Add payment
           </button>
         </div>
-        <p className="mt-3 flex items-baseline gap-2">
-          <span className="font-display text-[56px] font-semibold leading-none tabular tracking-tight sm:text-7xl">{formatMeals(summary.balanceMeals)}</span>
-          <span className="text-lg font-medium text-white/75">meals</span>
+        <p className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="font-display text-[56px] font-semibold leading-none tabular tracking-tight sm:text-7xl">{daysOfFood}</span>
+          <span className="text-lg font-medium text-white/75">day{daysOfFood === 1 ? '' : 's'} left</span>
+          <span className="text-sm font-medium tabular text-white/60">· {formatMeals(summary.balanceMeals)} meal{summary.balanceMeals === 1 ? '' : 's'}</span>
         </p>
         <p className="mt-2 text-[17px] font-semibold tabular">{formatRupees(summary.balanceRupees)} <span className="font-normal text-white/70">left</span></p>
 
@@ -60,8 +63,7 @@ export function Dashboard() {
           <CalendarCheck className="size-5 shrink-0 text-white/80" aria-hidden />
           <p className="text-sm leading-snug">
             {summary.coveredUntil ? (
-              <>Food covered until <strong className="font-semibold">{formatDate(summary.coveredUntil, { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
-                <span className="text-white/70"> · {daysLeft === 0 ? 'today' : `${daysLeft} day${daysLeft === 1 ? '' : 's'}`}</span></>
+              <>Food covered until <strong className="font-semibold">{daysLeft === 0 ? 'today' : formatDate(summary.coveredUntil, { weekday: 'short', day: 'numeric', month: 'short' })}</strong></>
             ) : <>No meals covered — add a payment to continue</>}
           </p>
         </div>
